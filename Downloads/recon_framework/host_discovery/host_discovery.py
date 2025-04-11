@@ -6,6 +6,7 @@ Identifies active web hosts from discovered subdomains.
 import logging
 import subprocess
 import os
+import shutil
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -27,10 +28,16 @@ def run(config, db_client):
     tools_config = config.get('tools', {})
     naabu_path = tools_config.get('naabu')
     
-    # Verify tool existence
-    if not os.path.exists(naabu_path):
-        logger.warning(f"Naabu not found at {naabu_path}")
-        return {'error': 'Naabu tool not available', 'new_hosts': []}
+    # Try to find naabu if path is not valid
+    if not naabu_path or not os.path.exists(naabu_path):
+        logger.warning(f"Naabu not found at configured path: {naabu_path}")
+        # Try to find naabu in PATH
+        naabu_path = shutil.which('naabu')
+        if naabu_path:
+            logger.info(f"Found naabu in PATH: {naabu_path}")
+        else:
+            logger.warning("Naabu not found in PATH")
+            return {'error': 'Naabu tool not available', 'new_hosts': []}
     
     # Initialize database
     db = db_client[config.get('mongodb', {}).get('database', 'recon_framework')]

@@ -11,12 +11,24 @@ import argparse
 from datetime import datetime
 from dotenv import load_dotenv
 
-# Import modules
-from subdomain_enum import subdomain_enumeration
-from host_discovery import host_discovery
-from scan import vulnerability_scan
-from notification import notification_handler
-from utils import db_handler, config_loader, config_validator
+# Add the current directory to the Python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Import modules - try both relative and absolute imports
+try:
+    # Try absolute imports first (when installed as a package)
+    from recon_framework.subdomain_enum import subdomain_enumeration
+    from recon_framework.host_discovery import host_discovery
+    from recon_framework.scan import vulnerability_scan
+    from recon_framework.notification import notification_handler
+    from recon_framework.utils import db_handler, config_loader, config_validator
+except ImportError:
+    # Fall back to relative imports (when running directly)
+    from subdomain_enum import subdomain_enumeration
+    from host_discovery import host_discovery
+    from scan import vulnerability_scan
+    from notification import notification_handler
+    from utils import db_handler, config_loader, config_validator
 
 def setup_logging(log_level=logging.INFO):
     """Set up logging configuration."""

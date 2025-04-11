@@ -31,11 +31,11 @@ echo "Installing Python and pip..."
 case $OS in
     "Ubuntu" | "Debian GNU/Linux")
         apt-get update
-        apt-get install -y python3 python3-pip python3-venv git
+        apt-get install -y python3 python3-pip python3-venv git curl wget
         ;;
     "CentOS Linux")
         yum -y update
-        yum -y install python3 python3-pip git
+        yum -y install python3 python3-pip git curl wget
         ;;
     *)
         echo "Unsupported OS: $OS"
@@ -79,13 +79,39 @@ EOF
         ;;
 esac
 
+# Create directory for tools
+mkdir -p /opt/recon-tools
+cd /opt/recon-tools
+
 # Install Go (required for some tools)
 echo "Installing Go..."
-wget https://go.dev/dl/go1.22.0.linux-amd64.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.22.0.linux-amd64.tar.gz
+GO_VERSION="1.22.0"
+ARCH=$(uname -m)
+if [ "$ARCH" = "x86_64" ]; then
+    GO_ARCH="amd64"
+elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    GO_ARCH="arm64"
+else
+    echo "Unsupported architecture: $ARCH"
+    exit 1
+fi
+
+wget https://go.dev/dl/go${GO_VERSION}.linux-${GO_ARCH}.tar.gz
+rm -rf /usr/local/go && tar -C /usr/local -xzf go${GO_VERSION}.linux-${GO_ARCH}.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile
-rm go1.22.0.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/bash.bashrc
+source /etc/profile
+rm go${GO_VERSION}.linux-${GO_ARCH}.tar.gz
+
+# Create directory for Go binaries and add to PATH
+mkdir -p /opt/go/bin
+echo 'export GOPATH=/opt/go' >> /etc/profile
+echo 'export PATH=$PATH:/opt/go/bin' >> /etc/profile
+echo 'export GOPATH=/opt/go' >> /etc/bash.bashrc
+echo 'export PATH=$PATH:/opt/go/bin' >> /etc/bash.bashrc
+export GOPATH=/opt/go
+export PATH=$PATH:/opt/go/bin
 
 # Install external tools
 echo "Installing external tools..."
@@ -93,36 +119,76 @@ echo "Installing external tools..."
 # Install subfinder
 echo "Installing subfinder..."
 GO111MODULE=on go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-ln -sf ~/go/bin/subfinder /usr/local/bin/subfinder
+if [ ! -f "$GOPATH/bin/subfinder" ]; then
+    echo "Failed to install subfinder. Trying alternative method..."
+    cd /opt/recon-tools
+    git clone https://github.com/projectdiscovery/subfinder.git
+    cd subfinder/v2/cmd/subfinder
+    go build .
+    cp subfinder /usr/local/bin/
+fi
+ln -sf $GOPATH/bin/subfinder /usr/local/bin/subfinder 2>/dev/null || true
 
 # Install assetfinder
 echo "Installing assetfinder..."
 go install -v github.com/tomnomnom/assetfinder@latest
-ln -sf ~/go/bin/assetfinder /usr/local/bin/assetfinder
+if [ ! -f "$GOPATH/bin/assetfinder" ]; then
+    echo "Failed to install assetfinder. Trying alternative method..."
+    cd /opt/recon-tools
+    git clone https://github.com/tomnomnom/assetfinder.git
+    cd assetfinder
+    go build .
+    cp assetfinder /usr/local/bin/
+fi
+ln -sf $GOPATH/bin/assetfinder /usr/local/bin/assetfinder 2>/dev/null || true
 
 # Install naabu
 echo "Installing naabu..."
 GO111MODULE=on go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
-ln -sf ~/go/bin/naabu /usr/local/bin/naabu
+if [ ! -f "$GOPATH/bin/naabu" ]; then
+    echo "Failed to install naabu. Trying alternative method..."
+    cd /opt/recon-tools
+    git clone https://github.com/projectdiscovery/naabu.git
+    cd naabu/v2/cmd/naabu
+    go build .
+    cp naabu /usr/local/bin/
+fi
+ln -sf $GOPATH/bin/naabu /usr/local/bin/naabu 2>/dev/null || true
 
 # Install nuclei
 echo "Installing nuclei..."
 GO111MODULE=on go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-ln -sf ~/go/bin/nuclei /usr/local/bin/nuclei
+if [ ! -f "$GOPATH/bin/nuclei" ]; then
+    echo "Failed to install nuclei. Trying alternative method..."
+    cd /opt/recon-tools
+    git clone https://github.com/projectdiscovery/nuclei.git
+    cd nuclei/v3/cmd/nuclei
+    go build .
+    cp nuclei /usr/local/bin/
+fi
+ln -sf $GOPATH/bin/nuclei /usr/local/bin/nuclei 2>/dev/null || true
 
 # Clone nuclei-templates
 echo "Cloning nuclei-templates..."
 git clone https://github.com/projectdiscovery/nuclei-templates.git /opt/nuclei-templates
 
+# Return to the framework directory
+cd "$(dirname "$0")"
+
 # Create virtual environment and install Python dependencies
 echo "Installing Python dependencies..."
-cd "$(dirname "$0")"
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
 # Create config directory if it doesn't exist
 mkdir -p config
+
+# Detect tool paths
+SUBFINDER_PATH=$(which subfinder)
+ASSETFINDER_PATH=$(which assetfinder)
+NAABU_PATH=$(which naabu)
+NUCLEI_PATH=$(which nuclei)
 
 # Create a basic configuration file if it doesn't exist
 if [ ! -f config/.config ]; then
@@ -150,10 +216,10 @@ servers = [{"url": "https://acunetix_server", "api_key": "your_acunetix_api_key"
 templates_path = /opt/nuclei-templates/
 
 [tools]
-subfinder = /usr/local/bin/subfinder
-assetfinder = /usr/local/bin/assetfinder
-naabu = /usr/local/bin/naabu
-nuclei = /usr/local/bin/nuclei
+subfinder = ${SUBFINDER_PATH}
+assetfinder = ${ASSETFINDER_PATH}
+naabu = ${NAABU_PATH}
+nuclei = ${NUCLEI_PATH}
 
 [targets]
 domains = ["example.com"]

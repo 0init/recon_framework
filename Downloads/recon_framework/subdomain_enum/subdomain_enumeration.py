@@ -8,6 +8,7 @@ import json
 import logging
 import subprocess
 import tempfile
+import shutil
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -36,15 +37,26 @@ def run(config, db_client):
     subfinder_path = tools_config.get('subfinder')
     assetfinder_path = tools_config.get('assetfinder')
     
-    # Verify tool existence
-    if not os.path.exists(subfinder_path):
-        logger.warning(f"Subfinder not found at {subfinder_path}")
-        subfinder_path = None
+    # Try to find tools if paths are not valid
+    if not subfinder_path or not os.path.exists(subfinder_path):
+        logger.warning(f"Subfinder not found at configured path: {subfinder_path}")
+        # Try to find subfinder in PATH
+        subfinder_path = shutil.which('subfinder')
+        if subfinder_path:
+            logger.info(f"Found subfinder in PATH: {subfinder_path}")
+        else:
+            logger.warning("Subfinder not found in PATH")
     
-    if not os.path.exists(assetfinder_path):
-        logger.warning(f"Assetfinder not found at {assetfinder_path}")
-        assetfinder_path = None
+    if not assetfinder_path or not os.path.exists(assetfinder_path):
+        logger.warning(f"Assetfinder not found at configured path: {assetfinder_path}")
+        # Try to find assetfinder in PATH
+        assetfinder_path = shutil.which('assetfinder')
+        if assetfinder_path:
+            logger.info(f"Found assetfinder in PATH: {assetfinder_path}")
+        else:
+            logger.warning("Assetfinder not found in PATH")
     
+    # Check if at least one tool is available
     if not subfinder_path and not assetfinder_path:
         logger.error("No subdomain enumeration tools available")
         return {'error': 'No subdomain enumeration tools available', 'new_subdomains': []}
